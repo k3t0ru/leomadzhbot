@@ -16,7 +16,13 @@ Telegram-бот для дейтинга.
 - **Docker**
 
 ## Этапы разработки
-Подробно описано в [docs/ROADMAP.md](docs/ROADMAP.md).
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Архитектура проекта
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Схема базы данных
+[docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
 
 ## Как запустить (локально)
 ```bash
