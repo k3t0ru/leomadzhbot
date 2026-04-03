@@ -25,35 +25,28 @@
 5. **Storage Service (MinIO)**
    - Хранение всех фотографий пользователей
 
-## Схема архитектуры (Mermaid)
+## Схема архитектуры системы
 
 ```mermaid
-flowchart TD
-    subgraph "Telegram"
-        User[Пользователь Telegram]
-        Bot[Telegram Bot Service Aiogram]
+flowchart LR
+    User[Пользователь] --> Bot[Aiogram Bot]
+    
+    Bot <--> FastAPI[FastAPI Service]
+    Bot <--> Redis[Redis Cache]
+    Bot --> RabbitMQ[RabbitMQ]
+    
+    FastAPI <--> PostgreSQL[(PostgreSQL)]
+    FastAPI --> MinIO[MinIO]
+    
+    RabbitMQ --> CeleryWorkers[Celery Workers]
+    CeleryBeat[Celery Beat] --> RabbitMQ
+    
+    CeleryWorkers <--> PostgreSQL
+    CeleryWorkers <--> Redis
+    
+    subgraph Rating
+        RatingService[Rating & Matching Logic]
     end
-
-    subgraph "Backend"
-        API[FastAPI Profile Service]
-        Rating[Rating & Matching Service]
-        Celery[Celery Beat + Workers]
-    end
-
-    subgraph "Хранилища"
-        DB[(PostgreSQL)]
-        Redis[(Redis Cache)]
-        MQ[RabbitMQ]
-        MinIO[MinIO S3]
-    end
-
-    User --> Bot
-    Bot <--> API
-    Bot --> MQ
-    API --> DB
-    API --> MinIO
-    Rating <--> DB
-    Rating <--> Redis
-    Rating <--> MQ
-    Celery --> Rating
-    Bot <--> Redis
+    
+    FastAPI <--> RatingService
+    RatingService <--> PostgreSQL
