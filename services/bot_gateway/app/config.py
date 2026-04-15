@@ -1,7 +1,7 @@
 import os
 
 
-BOT_TOKEN = "BOT_TOKEN_PLACEHOLDER"
+BOT_TOKEN = "8603422627:AAEm8-E0ULudQM_c0xsI0FtkS07Vg3J1BhA"
 
 
 class Settings:
