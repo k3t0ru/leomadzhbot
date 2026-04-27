@@ -34,7 +34,6 @@ flowchart TD
     subgraph Storage ["Data & Storage"]
         PG[("PostgreSQL")]
         Redis[("Redis")]
-        MinIO[("MinIO")]
     end
 
     Bot --> Profile
@@ -44,6 +43,5 @@ flowchart TD
     Matching --> Bot
     
     Profile <--> PG
-    Profile --> MinIO
     Matching <--> PG
     Matching <--> Redis
