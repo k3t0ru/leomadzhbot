@@ -41,5 +41,6 @@ flowchart TD
     Matching --> Bot
     
     Profile <--> PG
+    Profile --> MinIO
     Matching <--> PG
     Matching <--> Redis
