@@ -30,6 +30,24 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    container_name: leomadzhbot-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   profile-service:
     build:
       context: ./services/profile_service
@@ -37,12 +55,18 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://leomadzhbot:leomadzhbot@postgres:5432/leomadzhbot
       REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: photos
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   bot-gateway:
@@ -51,9 +75,15 @@ services:
     container_name: leomadzhbot-bot-gateway
     environment:
       PROFILE_SERVICE_BASE_URL: http://profile-service:8000
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: photos
     depends_on:
       - profile-service
+      - minio
 
 volumes:
   pgdata:
   redisdata:
+  miniodata:

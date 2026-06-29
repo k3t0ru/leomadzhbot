@@ -5,3 +5,4 @@ asyncpg==0.30.0
 pydantic==2.10.3
 pydantic-settings==2.7.1
 redis==5.2.1
+minio==7.2.20

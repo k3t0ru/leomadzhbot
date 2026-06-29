@@ -1,12 +1,14 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+import uuid
 
 from app.db import engine, get_session
 from app.models import Base, User, Profile, UserPreference, ProfileInteraction
 from app.schemas import UserOut, UserRegisterIn, ProfileOut, ProfileUpdate, UserPreferenceOut, UserPreferenceUpdate
 from app.ranking import get_ranked_profiles
+from app.minio_client import upload_photo, ensure_bucket_exists
 
 app = FastAPI(title="Profile Service")
 
@@ -15,11 +17,41 @@ app = FastAPI(title="Profile Service")
 async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    ensure_bucket_exists()
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+@app.post("/api/v1/profiles/{user_id}/photo")
+async def upload_profile_photo(user_id: int, file: UploadFile = File(...), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    file_ext = file.filename.split(".")[-1] if file.filename else "jpg"
+    file_name = f"user_{user_id}/{uuid.uuid4()}.{file_ext}"
+    
+    file_data = await file.read()
+    minio_path = await upload_photo(file_data, file_name)
+    
+    if not minio_path:
+        raise HTTPException(status_code=500, detail="Failed to upload photo")
+
+    # Update profile with new photo path
+    if profile.photo_ids is None:
+        profile.photo_ids = []
+    
+    profile.photo_ids.append(minio_path)
+    profile.photos_count = len(profile.photo_ids)
+    profile.completeness_score = calculate_completeness(profile)
+    
+    await session.commit()
+    await session.refresh(profile)
+    
+    return {"status": "ok", "photo_url": minio_path}
 
 
 @app.post("/api/v1/users/register", response_model=UserOut)

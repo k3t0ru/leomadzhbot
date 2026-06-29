@@ -1,8 +1,9 @@
 import asyncio
+import os
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart, Command, StateFilter
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, URLInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.fsm.state import StatesGroup, State
@@ -12,6 +13,7 @@ from app.profile_api import register_user
 from app.profile_fsm import ProfileForm, ViewingProfiles, RespondingToLikes
 from app.redis_cache import get_next_profile
 from app.keyboards import get_main_menu_kb, get_my_profile_kb, get_viewing_kb, get_skip_photo_kb, get_gender_kb, get_like_response_kb
+from app.minio_client import download_photo
 import httpx
 
 router = Router()
@@ -95,32 +97,38 @@ async def process_desc(message: Message, state: FSMContext):
 @router.message(ProfileForm.waiting_for_photo)
 async def process_photo(message: Message, state: FSMContext):
     data = await state.get_data()
-    photo_ids = data.get("photo_ids", [])
-    
+    user_id = data.get("user_id")
+    if not user_id:
+        user_id = await get_db_user_id(message.from_user.id)
+        
     if message.photo:
-        photo_ids.append(message.photo[-1].file_id)
-        await state.update_data(photo_ids=photo_ids)
-        # Assuming only 1 photo for simplicity during registration, but can be multiple.
+        photo_file = await message.bot.download(message.photo[-1])
+        photo_bytes = photo_file.read()
+        
+        # Upload to MinIO via Profile Service
+        async with httpx.AsyncClient() as client:
+            files = {"file": ("photo.jpg", photo_bytes, "image/jpeg")}
+            resp = await client.post(f"{PROFILE_SERVICE_URL}/api/v1/profiles/{user_id}/photo", files=files)
+            
+        if resp.status_code != 200:
+            await message.answer("Не удалось загрузить фото. Попробуй еще раз.")
+            return
+            
     elif message.text == "Без фото":
         pass
     else:
         await message.answer("Пожалуйста, отправь фото или нажми 'Без фото'.")
         return
         
+    # Update other profile data
     data = await state.get_data()
-    user_id = data.get("user_id")
-    if not user_id:
-        user_id = await get_db_user_id(message.from_user.id)
-        
     async with httpx.AsyncClient() as client:
         payload = {
             "name": data.get("name"),
             "age": data.get("age"),
             "gender": data.get("gender"),
             "city": data.get("city"),
-            "description": data.get("description"),
-            "photo_ids": data.get("photo_ids", []),
-            "photos_count": len(data.get("photo_ids", []))
+            "description": data.get("description")
         }
         await client.put(f"{PROFILE_SERVICE_URL}/api/v1/profiles/{user_id}", json=payload)
     
@@ -247,14 +255,16 @@ async def process_new_photo(message: Message, state: FSMContext):
         return
         
     user_id = await get_db_user_id(message.from_user.id)
-    photo_id = message.photo[-1].file_id
+    photo_file = await message.bot.download(message.photo[-1])
+    photo_bytes = photo_file.read()
     
     async with httpx.AsyncClient() as client:
-        payload = {
-            "photo_ids": [photo_id],
-            "photos_count": 1
-        }
-        await client.put(f"{PROFILE_SERVICE_URL}/api/v1/profiles/{user_id}", json=payload)
+        files = {"file": ("photo.jpg", photo_bytes, "image/jpeg")}
+        resp = await client.post(f"{PROFILE_SERVICE_URL}/api/v1/profiles/{user_id}/photo", files=files)
+        
+    if resp.status_code != 200:
+        await message.answer("Не удалось загрузить фото. Попробуй еще раз.")
+        return
     
     await state.clear()
     await message.answer("Фото анкеты обновлено!", reply_markup=get_my_profile_kb())
